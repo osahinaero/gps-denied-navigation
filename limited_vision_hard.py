@@ -3,115 +3,113 @@ import time
 import random
 
 # ===== USER INPUT =====
-size = int(input("Enter grid size (e.g. 15): "))
+size = int(input("Enter odd grid size, like 15, 21, or 25: "))
+
+# Maze generation works best with odd sizes
+if size % 2 == 0:
+    size += 1
+    print("Even size detected. Using", size, "instead.")
+
 rows = size
 cols = size
-cell_size = 40
-
+cell_size = 35
 vision_radius = 1
 
-# ===== TARGET =====
-target = (cols-1, rows-1)
+target = (cols - 1, rows - 1)
 
-# ===== TRUE MAP =====
-grid = [[0 for _ in range(cols)] for _ in range(rows)]
+# ===== CREATE MAZE-LIKE TRUE MAP =====
+grid = [[1 for _ in range(cols)] for _ in range(rows)]
 
-# ===== CREATE HARD GUARANTEED PATH =====
-path_cells = set()
-x, y = 0, 0
-path_cells.add((x, y))
+def carve_path(x, y):
+    grid[y][x] = 0
 
-while (x, y) != target:
-    moves_options = []
+    directions = [(2, 0), (-2, 0), (0, 2), (0, -2)]
+    random.shuffle(directions)
 
-    # bias toward target
-    if x < target[0]:
-        moves_options.append((1, 0))
-    if y < target[1]:
-        moves_options.append((0, 1))
+    for dx, dy in directions:
+        nx = x + dx
+        ny = y + dy
 
-    # allow detours
-    if x > 0:
-        moves_options.append((-1, 0))
-    if y > 0:
-        moves_options.append((0, -1))
+        if 0 <= nx < cols and 0 <= ny < rows and grid[ny][nx] == 1:
+            grid[y + dy // 2][x + dx // 2] = 0
+            carve_path(nx, ny)
 
-    dx, dy = random.choice(moves_options)
+carve_path(0, 0)
 
-    nx = x + dx
-    ny = y + dy
+# Ensure target is open and connected
+grid[target[1]][target[0]] = 0
+if target[0] > 0:
+    grid[target[1]][target[0] - 1] = 0
+if target[1] > 0:
+    grid[target[1] - 1][target[0]] = 0
 
-    if 0 <= nx < cols and 0 <= ny < rows:
-        x, y = nx, ny
-        path_cells.add((x, y))
+# ===== ADD EXTRA DEAD-END TRAPS =====
+for _ in range(int(rows * cols * 0.08)):
+    tx = random.randint(1, cols - 2)
+    ty = random.randint(1, rows - 2)
 
-# ===== ADD OBSTACLES (DENser) =====
-for _ in range(int(rows * cols * 0.35)):
-    ox = random.randint(0, cols-1)
-    oy = random.randint(0, rows-1)
-
-    if (ox, oy) not in path_cells:
-        grid[oy][ox] = 1
-
-# ===== ADD DEAD-END TRAPS =====
-for _ in range(int(rows * cols * 0.1)):
-    tx = random.randint(1, cols-2)
-    ty = random.randint(1, rows-2)
-
-    if (tx, ty) not in path_cells:
+    if grid[ty][tx] == 1:
         grid[ty][tx] = 0
-        grid[ty-1][tx] = 1
-        grid[ty+1][tx] = 1
-        grid[ty][tx-1] = 1
 
-# ensure start/target clear
+        walls = [
+            (tx + 1, ty),
+            (tx - 1, ty),
+            (tx, ty + 1),
+            (tx, ty - 1)
+        ]
+
+        random.shuffle(walls)
+
+        for wx, wy in walls[:3]:
+            if 0 <= wx < cols and 0 <= wy < rows:
+                grid[wy][wx] = 1
+
 grid[0][0] = 0
 grid[target[1]][target[0]] = 0
 
 # ===== KNOWN MAP =====
+# -1 = unknown, 0 = empty, 1 = wall/obstacle
 known_grid = [[-1 for _ in range(cols)] for _ in range(rows)]
 
 # ===== AGENT =====
 current = (0, 0)
 visited_path = []
 
-moves = [(1,0), (0,1), (0,-1), (-1,0)]
+moves = [(1, 0), (0, 1), (0, -1), (-1, 0)]
 
 # ===== PYGAME SETUP =====
 pygame.init()
 width = cols * cell_size
 height = rows * cell_size
 screen = pygame.display.set_mode((width, height))
-pygame.display.set_caption("Hard Navigation Simulation")
+pygame.display.set_caption("Limited Vision Maze Navigation")
 
-WHITE = (255,255,255)
-BLACK = (0,0,0)
-RED = (255,0,0)
-BLUE = (0,0,255)
-GREEN = (0,255,0)
-GRAY = (150,150,150)
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
+GRAY = (140, 140, 140)
+LIGHT_GRAY = (210, 210, 210)
 
-# ===== HEURISTIC =====
-def h(a, b):
-    return abs(a[0]-b[0]) + abs(a[1]-b[1])
+def heuristic(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-# ===== UPDATE VISION =====
 def update_vision():
-    for dy in range(-vision_radius, vision_radius+1):
-        for dx in range(-vision_radius, vision_radius+1):
+    for dy in range(-vision_radius, vision_radius + 1):
+        for dx in range(-vision_radius, vision_radius + 1):
             nx = current[0] + dx
             ny = current[1] + dy
 
             if 0 <= nx < cols and 0 <= ny < rows:
                 known_grid[ny][nx] = grid[ny][nx]
 
-# ===== A* ON PARTIAL MAP =====
 def astar(start, target):
     open_set = [start]
     came_from = {}
 
     g = {start: 0}
-    f = {start: h(start, target)}
+    f = {start: heuristic(start, target)}
 
     while open_set:
         node = min(open_set, key=lambda pos: f.get(pos, float("inf")))
@@ -136,29 +134,34 @@ def astar(start, target):
             if known_grid[ny][nx] == 1:
                 continue
 
+            # Unknown cells are allowed, but risky
             cost = 1
             if known_grid[ny][nx] == -1:
-                cost = 4  # higher penalty for unknown
+                cost = 5
 
             tentative_g = g[node] + cost
 
             if tentative_g < g.get(neighbor, float("inf")):
                 came_from[neighbor] = node
                 g[neighbor] = tentative_g
-                f[neighbor] = tentative_g + h(neighbor, target)
+                f[neighbor] = tentative_g + heuristic(neighbor, target)
 
                 if neighbor not in open_set:
                     open_set.append(neighbor)
 
     return []
 
-# ===== DRAW =====
 def draw():
     screen.fill(WHITE)
 
     for y in range(rows):
         for x in range(cols):
-            rect = pygame.Rect(x*cell_size, y*cell_size, cell_size, cell_size)
+            rect = pygame.Rect(
+                x * cell_size,
+                y * cell_size,
+                cell_size,
+                cell_size
+            )
 
             if known_grid[y][x] == -1:
                 pygame.draw.rect(screen, GRAY, rect)
@@ -167,20 +170,44 @@ def draw():
             else:
                 pygame.draw.rect(screen, WHITE, rect)
 
-            pygame.draw.rect(screen, (200,200,200), rect, 1)
+            pygame.draw.rect(screen, LIGHT_GRAY, rect, 1)
 
     # visited trail
     for p in visited_path:
-        pygame.draw.rect(screen, GREEN,
-            pygame.Rect(p[0]*cell_size, p[1]*cell_size, cell_size, cell_size))
+        pygame.draw.rect(
+            screen,
+            GREEN,
+            pygame.Rect(
+                p[0] * cell_size,
+                p[1] * cell_size,
+                cell_size,
+                cell_size
+            )
+        )
 
     # target
-    pygame.draw.rect(screen, RED,
-        pygame.Rect(target[0]*cell_size, target[1]*cell_size, cell_size, cell_size))
+    pygame.draw.rect(
+        screen,
+        RED,
+        pygame.Rect(
+            target[0] * cell_size,
+            target[1] * cell_size,
+            cell_size,
+            cell_size
+        )
+    )
 
     # agent
-    pygame.draw.rect(screen, BLUE,
-        pygame.Rect(current[0]*cell_size, current[1]*cell_size, cell_size, cell_size))
+    pygame.draw.rect(
+        screen,
+        BLUE,
+        pygame.Rect(
+            current[0] * cell_size,
+            current[1] * cell_size,
+            cell_size,
+            cell_size
+        )
+    )
 
     pygame.display.update()
 
@@ -196,26 +223,38 @@ while running:
 
     if current == target:
         print("Reached target!")
+        draw()
+        time.sleep(1)
         break
 
-    visited_path.append(current)
+    if current not in visited_path:
+        visited_path.append(current)
 
     path = astar(current, target)
 
     if path:
         current = path[0]
     else:
-        # exploration fallback
+        print("No known path. Exploring nearby unknown space.")
+
         random.shuffle(moves)
+        moved = False
+
         for dx, dy in moves:
             nx = current[0] + dx
             ny = current[1] + dy
+
             if 0 <= nx < cols and 0 <= ny < rows:
                 if known_grid[ny][nx] != 1:
                     current = (nx, ny)
+                    moved = True
                     break
 
+        if not moved:
+            print("Agent is trapped.")
+            break
+
     draw()
-    time.sleep(0.12)
+    time.sleep(0.08)
 
 pygame.quit()
