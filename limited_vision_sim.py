@@ -52,6 +52,9 @@ known_grid = [[-1 for _ in range(cols)] for _ in range(rows)]
 # ===== AGENT =====
 current = (0, 0)
 
+# track visited path (what agent has DONE, not will do)
+visited_path = []
+
 moves = [(1,0), (0,1), (0,-1), (-1,0)]
 
 # ===== PYGAME SETUP =====
@@ -113,7 +116,7 @@ def astar(start, target):
             if known_grid[ny][nx] == 1:
                 continue
 
-            # unknown = higher cost (encourage exploration but cautious)
+            # unknown = risky but allowed
             cost = 1
             if known_grid[ny][nx] == -1:
                 cost = 3
@@ -131,32 +134,37 @@ def astar(start, target):
     return []
 
 # ===== DRAW =====
-def draw(path):
+def draw():
     screen.fill(WHITE)
 
     for y in range(rows):
         for x in range(cols):
             rect = pygame.Rect(x*cell_size, y*cell_size, cell_size, cell_size)
 
+            # UNKNOWN
             if known_grid[y][x] == -1:
                 pygame.draw.rect(screen, GRAY, rect)
+
+            # OBSTACLE
             elif known_grid[y][x] == 1:
                 pygame.draw.rect(screen, BLACK, rect)
+
+            # EMPTY
             else:
                 pygame.draw.rect(screen, WHITE, rect)
 
             pygame.draw.rect(screen, (200,200,200), rect, 1)
 
-    # path
-    for p in path:
+    # DRAW VISITED PATH (where agent HAS been)
+    for p in visited_path:
         pygame.draw.rect(screen, GREEN,
             pygame.Rect(p[0]*cell_size, p[1]*cell_size, cell_size, cell_size))
 
-    # target
+    # DRAW TARGET
     pygame.draw.rect(screen, RED,
         pygame.Rect(target[0]*cell_size, target[1]*cell_size, cell_size, cell_size))
 
-    # agent
+    # DRAW AGENT
     pygame.draw.rect(screen, BLUE,
         pygame.Rect(current[0]*cell_size, current[1]*cell_size, cell_size, cell_size))
 
@@ -164,7 +172,6 @@ def draw(path):
 
 # ===== MAIN LOOP =====
 running = True
-path = []
 
 while running:
     for event in pygame.event.get():
@@ -177,10 +184,13 @@ while running:
         print("Reached target!")
         break
 
+    # record where we've been
+    visited_path.append(current)
+
     path = astar(current, target)
 
     if path:
-        current = path[0]  # move one step
+        current = path[0]  # move ONE step only
     else:
         # fallback exploration
         random.shuffle(moves)
@@ -192,7 +202,7 @@ while running:
                     current = (nx, ny)
                     break
 
-    draw(path)
+    draw()
     time.sleep(0.15)
 
 pygame.quit()
